@@ -37,6 +37,8 @@ checked_stod(const std::string& op) {
 	catch(std::exception) { throw std::invalid_argument("Bad operand " + op); }
 }
 
+const char *OPERATIONS = "+-*/!@#$%^&(){}[];:.'\"?<>\\|";
+
 std::string
 calc_simple_expr(char op, const std::string& op1, const std::string& op2) {
 	// TODO: catch stod exceptions
@@ -55,7 +57,7 @@ calc_simple_expr(char op, const std::string& op1, const std::string& op2) {
 		}
 		break;
 	default:
-		throw std::invalid_argument("Bad operation " + std::to_string(op));
+		throw std::invalid_argument(std::string("Bad operation ") + op);
 	}
 	return std::to_string(res);
 }
@@ -72,13 +74,48 @@ read_line(std::istream *is, std::string *res) {
 	}
 }
 
-const char *OPERATIONS = "+-*/!@#$%^&(){}[];:.'\"?<>\\|";
+class expr_solver {
+private:
+	std::deque<std::string> operands;
+	std::deque<char> operations;
+public:
+	void push_next_operand(const std::string& operand) {
+		if(operations.size() == 0) {
+			operands.push_back(operand);
+		} else {
+			char op = operations.back();
+			if(('*' == op) || ('/' == op)) {
+				operations.pop_back();
 
-std::string
-expr_solver(const std::deque<std::string>& operands, const std::deque<char>& operators) {
+				std::string prev_operand = operands.back();
+				operands.pop_back();
+				operands.push_back(calc_simple_expr(op, prev_operand, operand));
+			} else {
+				operands.push_back(operand);
+			}
+		}
+	}
+	void push_next_operation(char c) {
+		operations.push_back(c);
+	}
 
-	return "0";
-}
+	bool solve() {
+		while(operands.size() > 1) {
+			std::string res = calc_simple_expr(operations[0], operands[0], operands[1]);
+
+			operands.pop_front();
+			operands.pop_front();
+			operations.pop_front();
+
+			operands.push_front(res);
+		}
+		return ((operands.size() == 1) && (operations.size() == 0));
+	}
+
+	const std::string& result() const {
+		return operands[0];
+	}
+};
 
 }
 
@@ -98,42 +135,30 @@ table::evaluate_cell(const std::string& caddr) {
 		throw std::logic_error("Algorithm broken");
 	}
 
-	// TODO: implement operations priorities
-	size_t lp = 1;
-	std::deque<std::string> operands;
-	std::deque<char> operators;
-	while(lp < cell.length()) {
-		auto rp = cell.find_first_of(::OPERATIONS, lp);
-		if(rp == lp) {
-			rp = cell.find_first_of(::OPERATIONS, lp + 1);
+	try {
+		size_t lp = 1;
+		::expr_solver es;
+		while(lp < cell.length()) {
+			auto rp = cell.find_first_of(::OPERATIONS, lp);
+			if(rp == lp) {
+				rp = cell.find_first_of(::OPERATIONS, lp + 1);
+			}
+			if(std::string::npos == rp) {
+				es.push_next_operand(evaluate_operand(cell.substr(lp)));
+				break;
+			}
+			es.push_next_operand(evaluate_operand(cell.substr(lp, rp - lp)));
+			es.push_next_operation(cell[rp]);
+			lp = rp + 1;
 		}
-		if(std::string::npos == rp) {
-			operands.emplace_back(evaluate_operand(cell.substr(lp)));
-			break;
+		if(!es.solve()) {
+			throw std::invalid_argument("Bad expression at " + caddr);
 		}
-		operands.emplace_back(evaluate_operand(cell.substr(lp, rp - lp)));
-		operators.emplace_back(cell[rp]);
-		lp = rp + 1;
+		evaluated_cells_.insert_or_assign(caddr, es.result());
+	} catch(const std::invalid_argument& e) {
+		evaluated_cells_.erase(caddr);
+		throw e;
 	}
-
-	if(operands.size() - operators.size() != 1) {
-		throw std::invalid_argument("Bad expression at " + caddr);
-	}
-
-	while(operands.size() > 1) {
-		std::string res = ::calc_simple_expr(operators[0], operands[0], operands[1]);
-
-		operands.pop_front();
-		operands.pop_front();
-		operators.pop_front();
-
-		operands.push_front(res);
-	}
-	if((operands.size() != 1) && (operators.size() != 0)) {
-		throw std::invalid_argument("Bad expression at " + caddr);
-	}
-
-	evaluated_cells_.insert_or_assign(caddr, operands.front());
 	return evaluated_cells_.at(caddr);
 }
 
