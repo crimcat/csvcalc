@@ -9,6 +9,7 @@
 #include <stack>
 #include <stdexcept>
 #include <cstdlib>
+#include <optional>
 
 namespace {
 
@@ -21,6 +22,7 @@ split_string(const std::string& s, std::vector<std::string> *tokens) {
 		lp = rp + 1;
 	}
 }
+
 bool
 read_csv_header(const std::string& header, std::vector<std::string> *columns) {
 	::split_string(header, columns);
@@ -29,37 +31,6 @@ read_csv_header(const std::string& header, std::vector<std::string> *columns) {
 		return true;
 	}
 	return false;
-}
-
-double
-checked_stod(const std::string& op) {
-	try { return std::stod(op);	}
-	catch(std::exception) { throw std::invalid_argument("Bad operand " + op); }
-}
-
-const char *OPERATIONS = "+-*/!@#$%^&(){}[];:.'\"?<>\\|";
-
-std::string
-calc_simple_expr(char op, const std::string& op1, const std::string& op2) {
-	// TODO: catch stod exceptions
-	double o1 = checked_stod(op1);
-	double o2 = checked_stod(op2);
-	double res;
-	switch(op) {
-	case '+': res = o1 + o2; break;
-	case '-': res = o1 - o2; break;
-	case '*': res = o1 * o2; break;
-	case '/':
-		if(o2 != 0) {
-			res = o1 / o2;
-		} else {
-			throw std::invalid_argument("Division by zero");
-		}
-		break;
-	default:
-		throw std::invalid_argument(std::string("Bad operation ") + op);
-	}
-	return std::to_string(res);
 }
 
 void
@@ -74,10 +45,46 @@ read_line(std::istream *is, std::string *res) {
 	}
 }
 
+size_t
+find_first_punct(const std::string& s, size_t from) {
+	for(size_t i = from; i < s.length(); ++i) {
+		if(std::ispunct(s[i])) {
+			return i;
+		}
+	}
+	return std::string::npos;
+}
+
 class expr_solver {
 private:
 	std::deque<std::string> operands;
 	std::deque<char> operations;
+
+	static double checked_stod(const std::string& op) {
+		try { return std::stod(op); } catch(std::exception) { throw std::invalid_argument("Bad operand " + op); }
+	}
+
+	static std::string calc_simple_expr(char op, const std::string& op1, const std::string& op2) {
+		double o1 = checked_stod(op1);
+		double o2 = checked_stod(op2);
+		double res;
+		switch(op) {
+		case '+': res = o1 + o2; break;
+		case '-': res = o1 - o2; break;
+		case '*': res = o1 * o2; break;
+		case '/':
+		if(o2 != 0) {
+			res = o1 / o2;
+		} else {
+			throw std::invalid_argument("Division by zero");
+		}
+		break;
+		default:
+		throw std::invalid_argument(std::string("Bad operation ") + op);
+		}
+		return std::to_string(res);
+	}
+
 public:
 	void push_next_operand(const std::string& operand) {
 		if(operations.size() == 0) {
@@ -99,7 +106,7 @@ public:
 		operations.push_back(c);
 	}
 
-	bool solve() {
+	std::optional<std::string> solve() {
 		while(operands.size() > 1) {
 			std::string res = calc_simple_expr(operations[0], operands[0], operands[1]);
 
@@ -109,11 +116,9 @@ public:
 
 			operands.push_front(res);
 		}
-		return ((operands.size() == 1) && (operations.size() == 0));
-	}
-
-	const std::string& result() const {
-		return operands[0];
+		return ((operands.size() == 1) && (operations.size() == 0))
+			? std::optional<std::string>(operands[0])
+			: std::optional<std::string>();
 	}
 };
 
@@ -139,9 +144,9 @@ table::evaluate_cell(const std::string& caddr) {
 		size_t lp = 1;
 		::expr_solver es;
 		while(lp < cell.length()) {
-			auto rp = cell.find_first_of(::OPERATIONS, lp);
+			auto rp = ::find_first_punct(cell, lp);
 			if(rp == lp) {
-				rp = cell.find_first_of(::OPERATIONS, lp + 1);
+				rp = ::find_first_punct(cell, lp + 1);
 			}
 			if(std::string::npos == rp) {
 				es.push_next_operand(evaluate_operand(cell.substr(lp)));
@@ -151,10 +156,11 @@ table::evaluate_cell(const std::string& caddr) {
 			es.push_next_operation(cell[rp]);
 			lp = rp + 1;
 		}
-		if(!es.solve()) {
+		std::optional<std::string> result = es.solve();
+		if(!result.has_value()) {
 			throw std::invalid_argument("Bad expression at " + caddr);
 		}
-		evaluated_cells_.insert_or_assign(caddr, es.result());
+		evaluated_cells_.insert_or_assign(caddr, result.value());
 	} catch(const std::invalid_argument& e) {
 		evaluated_cells_.erase(caddr);
 		throw e;
