@@ -4,6 +4,7 @@
 #include <vector>
 #include <iostream>
 #include <unordered_map>
+#include <optional>
 
 namespace csv {
 
@@ -14,17 +15,19 @@ private:
 	std::unordered_map<std::string, std::string> cells_;
 	std::unordered_map<std::string, std::string> evaluated_cells_;
 
-	table(const table&) = delete;
-	const table& operator=(const table&) = delete;
-
 	const std::string& evaluate_operand(const std::string& operand);
 	const std::string& evaluate_cell(const std::string& caddr);
 
-public:
 	table() { }
+public:
+	table(const table&) = default;
+	table(table&&) = default;
+	virtual ~table() = default;
 	
-	bool load(std::istream *is);
+	table& operator=(const table&) = default;
 
+	static std::optional<table> read_csv(std::istream *is, char delimiter = ',');
+	
 	const std::vector<std::string>& rows() const { return rows_; }
 	const std::vector<std::string>& columns() const { return columns_; }
 
@@ -33,6 +36,9 @@ public:
 	}
 
 	const std::string& evaluate_cell_at(const std::string& caddr);
+	const std::string& operator[](const std::string& caddr) {
+		return evaluate_cell_at(caddr);
+	}
 };
 
 } // namespace csv

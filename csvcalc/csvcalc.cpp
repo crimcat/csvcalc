@@ -16,7 +16,7 @@ print_table(csv::table& t) {
 		for(const auto c : t.columns()) {
 			std::string caddr = c + r;
 			try {
-				std::cout << ',' << t.evaluate_cell_at(caddr);
+				std::cout << ',' << t[caddr];
 			} catch(const std::exception& e) {
 				std::cout << "[" << e.what() << "]";
 			}
@@ -30,12 +30,12 @@ main(int argc, char *argv[]) {
 	if(argc < 2) {
 		std::cout << "Usage:\n\t" << argv[0] << " <csv file name>\n";
 	} else {
-		csv::table table;
 		std::ifstream in(argv[1]);
-		if(!table.load(&in)) {
+		std::optional<csv::table> csv = csv::table::read_csv(&in);
+		if(!csv) {
 			std::cout << "Error loading table from " << argv[1] << ".\nCheck file presense and its formatting.";
 		} else {
-			print_table(table);
+			print_table(csv.value());
 		}
 	}
 	
